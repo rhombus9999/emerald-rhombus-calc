@@ -1,4 +1,4 @@
-$(function () {
+﻿$(function () {
     var trainers = [
     "May - route 103",
     "Grunt - Petalburg woods",
@@ -127,7 +127,7 @@ $(function () {
             });
 
             var sprite = $("<img>", {
-                src: "https://play.pokemonshowdown.com/sprites/gen5/" + pokemon.toLowerCase().replace(/ /g, "-").replace("tauros-paldea-combat", "tauros-paldeacombat").replace("tauros-paldea-blaze", "tauros-paldeablaze").replace("zygarde-10%", "zygarde-10").replace("oricorio-pom-pom", "oricorio-pompom").replace("porygon-z", "porygonz").replace("iron-treads", "irontreads").replace("tapu-koko", "tapukoko").replace("tapu-fini", "tapufini").replace("mr-mime", "mrmime").replace("mr.-mime", "mrmime").replace("sirfetch'd", "sirfetchd").replace("sirfetchd", "sirfetchd").replace("sirfetchâ€™d", "sirfetchd").replace("brute-bonnet", "brutebonnet").replace("walking-wake", "walkingwake").replace("urshifu-rapid-strike", "urshifu-rapidstrike").replace("flutter-mane", "fluttermane").replace("roaring-moon", "roaringmoon").replace("chien-pao", "chienpao").replace("scream-tail", "screamtail") + ".png",
+                src: "https://play.pokemonshowdown.com/sprites/gen5/" + pokemon.toLowerCase().replace(/ /g, "-").replace("tauros-paldea-combat", "tauros-paldeacombat").replace("tauros-paldea-blaze", "tauros-paldeablaze").replace("zygarde-10%", "zygarde-10").replace("oricorio-pom-pom", "oricorio-pompom").replace("porygon-z", "porygonz").replace("iron-treads", "irontreads").replace("tapu-koko", "tapukoko").replace("tapu-fini", "tapufini").replace("mr-mime", "mrmime").replace("mr.-mime", "mrmime").replace("sirfetch'd", "sirfetchd").replace("sirfetchd", "sirfetchd").replace("sirfetchÃ¢â‚¬â„¢d", "sirfetchd").replace("brute-bonnet", "brutebonnet").replace("walking-wake", "walkingwake").replace("urshifu-rapid-strike", "urshifu-rapidstrike").replace("flutter-mane", "fluttermane").replace("roaring-moon", "roaringmoon").replace("chien-pao", "chienpao").replace("scream-tail", "screamtail") + ".png",
                 alt: pokemon,
                 class: "team-pokemon-sprite"
             });
@@ -143,10 +143,8 @@ $(function () {
                 var selector = $("#p2 input.set-selector");
                 var option = getSetOptions().filter(function (x) { return x.pokemon === pokemon && x.set === setName; })[0];
                 if (!option) return;
-                selector.select2("data", option);
-                selector.trigger("change");
-                selector.select2("data", option);
-
+                selector.val(option.id).trigger("change");
+selector.select2("data", option);
                 $("#opposingTeamPokemon .team-pokemon").removeClass("selected");
                 card.addClass("selected");
             });
@@ -169,8 +167,10 @@ $(function () {
         }
     });
 
+    window.addEventListener('rhombus-trainers-loaded', renderOpposingTeam);
     renderOpposingTeam();
 });
+
 
 
 
