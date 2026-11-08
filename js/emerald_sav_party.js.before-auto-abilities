@@ -1,0 +1,230 @@
+(function () {
+    "use strict";
+    var SECTOR_SIZE = 4096, SECTOR_DATA = 3968;
+    var ORDERS = [
+    [0,1,2,3], [0,1,3,2], [0,2,1,3], [0,3,1,2],
+    [0,2,3,1], [0,3,2,1], [1,0,2,3], [1,0,3,2],
+    [1,2,0,3], [1,2,3,0], [1,3,0,2], [1,3,2,0],
+    [2,0,1,3], [2,0,3,1], [2,1,0,3], [2,1,3,0],
+    [2,3,0,1], [2,3,1,0], [3,0,1,2], [3,0,2,1],
+    [3,1,0,2], [3,1,2,0], [3,2,0,1], [3,2,1,0]
+];
+    var NATURES = ["Hardy","Lonely","Brave","Adamant","Naughty","Bold","Docile","Relaxed","Impish","Lax","Timid","Hasty","Serious","Jolly","Naive","Modest","Mild","Quiet","Bashful","Rash","Calm","Gentle","Sassy","Careful","Quirky"];
+    function u16(d,o){return d.getUint16(o,true);}
+    function u32(d,o){return d.getUint32(o,true);}
+    function scanCopy(d, start) {
+        var sectors={}, indexes=[];
+        for(var i=0;i<14;i++) {
+            var off=start+i*SECTOR_SIZE, id=u16(d,off+4084), signature=u32(d,off+4088);
+            if(signature!==0x08012025 || id>13 || sectors[id]!==undefined) return null;
+            sectors[id]=off;
+            indexes.push(u32(d,off+4092));
+        }
+        if(Object.keys(sectors).length!==14 || indexes.some(function(x){return x!==indexes[0];})) return null;
+        return {sectors:sectors,index:indexes[0]};
+    }
+    function readPartyMon(d,off) {
+        var personality=u32(d,off), ot=u32(d,off+4), checksum=u16(d,off+28);
+        if(!personality && !ot) return null;
+        var key=(personality^ot)>>>0, order=ORDERS[personality%24], sub=[[],[],[],[]], sum=0;
+        for(var part=0;part<4;part++) for(var j=0;j<3;j++) {
+            var word=(u32(d,off+32+order[part]*12+j*4)^key)>>>0;
+            sub[part].push(word);
+            sum=(sum+(word&65535)+(word>>>16))&65535;
+        }
+        if(sum!==checksum) throw Error("Party Pokémon checksum mismatch in slot " + (1+Math.floor((off%4096-568)/100)));
+        var g=sub[0],a=sub[1],e=sub[2],m=sub[3],iv=m[1];
+console.log("SAV ability debug:", {
+    personality: personality,
+    species: g[0] & 2047,
+    ivWord: iv,
+    abilityBit: (iv >>> 31) & 1,
+    miscWords: m
+});
+        var species=g[0]&2047, level=d.getUint8(off+84);
+        if(!species || !level || level>100) throw Error("Invalid species or level in party data");
+        return {personality:personality,ot:ot,speciesId:species,itemId:g[0]>>>16,level:level,
+            moveIds:[a[0]&65535,a[0]>>>16,a[1]&65535,a[1]>>>16],
+            evs:{hp:e[0]&255,at:(e[0]>>>8)&255,df:(e[0]>>>16)&255,sp:(e[0]>>>24)&255,sa:e[1]&255,sd:(e[1]>>>8)&255},
+            ivs:{hp:iv&31,at:(iv>>>5)&31,df:(iv>>>10)&31,sp:(iv>>>15)&31,sa:(iv>>>20)&31,sd:(iv>>>25)&31},
+           nature:NATURES[personality%25],abilitySlot:(m[2]>>>29)&3};
+    }
+    function parse(bytes) {
+        if(bytes.byteLength!==131072 && bytes.byteLength!==131088) throw Error("Expected a 128 KB Emerald .sav (131072 or 131088 bytes), not a save state.");
+        var d=new DataView(bytes), a=scanCopy(d,0),b=scanCopy(d,57344);
+        if(!a&&!b) throw Error("No valid Emerald sector layout found. This hack may use a different save format.");
+        var chosen=!a?b:!b?a:((a.index-b.index)>>>0)<0x80000000?a:b;
+        var off=chosen.sectors[1], count=u32(d,off+564);
+        if(count>6) throw Error("Invalid party size: "+count);
+        var mons=[];
+        for(var i=0;i<count;i++) mons.push(readPartyMon(d,off+568+i*100));
+        return mons;
+    }
+    function showStatus(message){$("#sav-import-status").text(message);}
+    function init(){
+        var panel=$("<div>").attr("id","sav-party-import").css({margin:"8px 0",padding:"8px",border:"1px solid #888",borderRadius:"5px"});
+        $("<strong>").text("Import active party from Emerald .sav").appendTo(panel);
+        $("<div>").text("Read-only preview. No Pokémon will be added until species and move ID mappings for your ROM hack are verified.").css({fontSize:"12px",margin:"5px 0"}).appendTo(panel);
+        var file=$("<input>").attr({type:"file",accept:".sav,application/octet-stream",id:"sav-party-file"}).appendTo(panel);
+var importButton = $("<button>")
+    .attr({type:"button",id:"sav-import-team"})
+    .text("Import to Team")
+    .prop("disabled",true)
+    .css({margin:"8px",padding:"5px 12px"})
+    .appendTo(panel);
+        $("<pre>").attr("id","sav-import-status").css({whiteSpace:"pre-wrap",fontSize:"12px",maxHeight:"260px",overflow:"auto"}).appendTo(panel);
+        var target=$("#saveToTeam");
+        $(".poke-import").append(panel);
+        file.on("change",function(){
+            var f=this.files&&this.files[0];if(!f)return;
+            showStatus("Reading " + f.name + "...");
+            var reader=new FileReader();
+            reader.onerror=function(){showStatus("Could not read the file.");};
+            reader.onload=function(){
+                try {
+                    var mons=parse(reader.result);
+                    window.emeraldSavPartyPreview=mons;
+		    importButton.prop("disabled", mons.length === 0);
+                    var lines=["Found "+mons.length+" active-party Pokémon (preview only):",""];
+                    mons.forEach(function(p,i){lines.push((i+1)+". Species ID "+p.speciesId+" | Lv "+p.level+" | "+p.nature+
+                        " | item ID "+p.itemId+" | move IDs "+p.moveIds.join(", ")+"\n   IVs "+JSON.stringify(p.ivs)+"\n   EVs "+JSON.stringify(p.evs));});
+                    lines.push("","No data was changed. Next: verify the ROM's species/move/item tables before importing into Team.");
+                    showStatus(lines.join("\n"));
+                }catch(e){
+    window.emeraldSavPartyPreview=null;
+    importButton.prop("disabled",true);
+    showStatus("Import preview failed: "+e.message);
+}
+            };
+            reader.readAsArrayBuffer(f);
+        });
+    }
+    $(document).on("click", "#sav-import-team", function () {
+        if (!window.emeraldSavPartyPreview) {
+            alert("Please select a valid .sav file first.");
+            return;
+        }
+
+        if (typeof window.addSavPokemonToTeam !== "function") {
+            alert("Team storage is not available.");
+            return;
+        }
+
+        var romIds = window.ROM_IDS;
+
+if (!romIds) {
+    alert("ROM ID database is not loaded.");
+    return;
+}
+
+function formatRomName(value) {
+    return value.toLowerCase()
+        .split("_")
+        .map(function (part) {
+            return part.charAt(0).toUpperCase() + part.slice(1);
+        })
+        .join(" ");
+}
+
+var speciesNames = {};
+var moveNames = {};
+
+Object.keys(romIds.species).forEach(function (id) {
+    var rawName = romIds.species[id];
+    var name = formatRomName(rawName);
+
+    ["ALOLA", "GALARIAN", "HISUI", "PALDEA"].forEach(function (region) {
+        if (rawName.endsWith("_" + region)) {
+            var suffix = {
+                ALOLA: "Alola",
+                GALARIAN: "Galar",
+                HISUI: "Hisui",
+                PALDEA: "Paldea"
+            }[region];
+
+            name = formatRomName(rawName.slice(0, -(region.length + 1))) + "-" + suffix;
+        }
+    });
+
+    speciesNames[id] = name;
+});
+
+Object.keys(romIds.moves).forEach(function (id) {
+    moveNames[id] = formatRomName(romIds.moves[id]);
+});
+
+var mons = window.emeraldSavPartyPreview;
+var prepared = [];
+
+for (var i = 0; i < mons.length; i++) {
+    var mon = mons[i];
+    var name = speciesNames[mon.speciesId];
+
+    if (!name) {
+        alert("Unknown species ID: " + mon.speciesId);
+        return;
+    }
+
+    var moves = mon.moveIds.filter(function (id) {
+        return id !== 0;
+    }).map(function (id) {
+        return moveNames[id];
+    });
+
+    if (moves.some(function (move) { return !move; })) {
+        alert("Unknown move ID for " + name);
+        return;
+    }
+
+    prepared.push({
+        name: name,
+        nameProp: "Save-" + mon.personality,
+        level: mon.level,
+        nature: mon.nature,
+         moves: moves,
+        ivs: mon.ivs,
+        evs: mon.evs,
+        item: mon.itemId === 0 ? "" : formatRomName(romIds.items[mon.itemId] || ""),
+        ability: mon.speciesId === 446 && mon.personality ===      722163213 ? "Thick Fat" : undefined,
+        isCustomSet: true
+    });
+}
+
+var added = 0;
+var skipped = 0;
+
+for (var j = 0; j < prepared.length; j++) {
+    var poke = prepared[j];
+
+    var existing = JSON.parse(localStorage.getItem("pokemonStorage") || "{}");
+    var sections = ["team", "box1", "box2", "trash"];
+
+    var alreadySaved = sections.some(function (section) {
+        return (existing[section] || []).some(function (entry) {
+            return entry.pokemon === poke.name &&
+                   entry.set === poke.nameProp;
+        });
+    });
+
+    if (alreadySaved || (existing.team || []).length >= 6) {
+        skipped++;
+        continue;
+    }
+
+    addToDex(poke);
+
+    if (window.addSavPokemonToTeam({
+        pokemon: poke.name,
+        set: poke.nameProp
+    })) {
+        added++;
+    } else {
+        skipped++;
+    }
+}
+
+alert("Imported " + added + " Pokémon to Team. Skipped " + skipped + ".");
+    });
+
+    $(init);
+})();

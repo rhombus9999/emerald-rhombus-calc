@@ -1,0 +1,438 @@
+$(function () {
+    var STORAGE_KEY = "pokemonStorage";
+    var SECTIONS = ["team", "box1", "box2", "trash"];
+    var SECTION_LABELS = {
+        team: "Team",
+        box1: "Box 1",
+        box2: "Box 2",
+        trash: "Trash"
+    };
+
+    function emptyStorage() {
+        return { team: [], box1: [], box2: [], trash: [] };
+    }
+
+    function loadStorage() {
+        var result;
+        try {
+            result = JSON.parse(localStorage.getItem(STORAGE_KEY)) || emptyStorage();
+        } catch (e) {
+            result = emptyStorage();
+        }
+
+        SECTIONS.forEach(function (section) {
+            if (!Array.isArray(result[section])) result[section] = [];
+        });
+
+        // Give legacy entries an ID and make IDs unique without deleting records.
+        // This repairs duplicate IDs while preserving different saved Pokémon sets.
+        var usedIds = {};
+        SECTIONS.forEach(function (section) {
+            result[section].forEach(function (pokemon) {
+                if (!pokemon || typeof pokemon !== "object") return;
+                var id = pokemon.id == null ? "" : String(pokemon.id);
+                if (!id || usedIds[id]) {
+                    id = "pokemon-" + Date.now() + "-" +
+                        Math.random().toString(36).slice(2, 10);
+                    pokemon.id = id;
+                }
+                usedIds[id] = true;
+            });
+            result[section] = result[section].filter(function (pokemon) {
+                return pokemon && typeof pokemon === "object";
+            });
+        });
+
+        return result;
+    }
+
+    function saveStorage() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(storage));
+    }
+
+    var storage = loadStorage();
+
+    function findPokemon(id) {
+        for (var i = 0; i < SECTIONS.length; i++) {
+            var section = SECTIONS[i];
+            var index = storage[section].findIndex(function (pokemon) {
+                return String(pokemon.id) === String(id);
+            });
+            if (index !== -1) {
+                return { section: section, index: index, pokemon: storage[section][index] };
+            }
+        }
+        return null;
+    }
+
+    function movePokemon(id, targetSection) {
+        if (SECTIONS.indexOf(targetSection) === -1) return;
+        var found = findPokemon(id);
+        if (!found || found.section === targetSection) return;
+
+        if (targetSection === "team" && storage.team.length >= 6) {
+            alert("Your Team already has 6 Pokémon. Move one out of the Team first.");
+            return;
+        }
+
+        var pokemon = storage[found.section].splice(found.index, 1)[0];
+        storage[targetSection].push(pokemon);
+        saveStorage();
+        renderStorage();
+    }
+
+    function pokemonSpriteURL(name) {
+        if (!name) return "";
+        // Pokémon Showdown uses lower-case names with punctuation removed.
+        var slug = String(name).toLowerCase()
+            .replace(/♀/g, "f").replace(/♂/g, "m")
+            .replace(/[^a-z0-9]/g, "");
+        return slug ? "https://play.pokemonshowdown.com/sprites/dex/" + slug + ".png" : "";
+    }
+
+    function makeButton(label, action, id, className) {
+        return $("<button>")
+            .attr("type", "button")
+            .addClass("storage-action " + (className || ""))
+            .attr("data-action", action)
+            .attr("data-id", id)
+            .text(label);
+    }
+
+    function renderStorage() {
+        SECTIONS.forEach(function (section) {
+            var container = $("#" + section);
+            container.empty();
+
+            storage[section].forEach(function (pokemon) {
+                var entry = $("<div>")
+                    .addClass("storage-pokemon")
+                    .attr("draggable", "true")
+                    .attr("data-id", pokemon.id);
+
+                var spriteURL = pokemonSpriteURL(pokemon.pokemon);
+                if (spriteURL) {
+                    $("<img>")
+                        .addClass("storage-pokemon-sprite")
+                        .attr("src", spriteURL)
+                        .attr("alt", "")
+                        .attr("loading", "lazy")
+                        .on("error", function () {
+                            var img = $(this);
+                            if (!img.data("fallback-attempted")) {
+                                img.data("fallback-attempted", true);
+                                var slug = String(pokemon.pokemon || "").toLowerCase()
+                                    .replace(/♀/g, "-f").replace(/♂/g, "-m")
+                                    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+                                if (slug) {
+                                    img.attr("src", "https://img.pokemondb.net/sprites/home/normal/" + slug + ".png");
+                                    return;
+                                }
+                            }
+                            img.hide();
+                            var card = img.closest(".storage-pokemon");
+                            if (!card.find(".storage-sprite-fallback").length) {
+                                $("<span>").addClass("storage-sprite-fallback")
+                                    .text(String(pokemon.pokemon || "?").slice(0, 3).toUpperCase())
+                                    .appendTo(card);
+                            }
+                        })
+                        .appendTo(entry);
+                }
+
+                $("<span>")
+                    .addClass("storage-pokemon-name")
+                    .text(pokemon.pokemon || "Unknown Pokémon")
+                    .appendTo(entry);
+
+                if (SECTIONS.indexOf(section) !== -1) {
+                    entry.addClass("storage-compact")
+                        .attr("tabindex", "0")
+                        .attr("role", "button")
+                        .attr("aria-label", (pokemon.pokemon || "Pokémon") +
+                            ": click to load; right-click or press Shift+F10 for actions")
+                        .attr("title", (pokemon.pokemon || "Pokémon") +
+                            " — click to load, right-click for actions");
+                }
+
+                var actions = $("<div>").addClass("storage-pokemon-actions");
+                actions.append(makeButton("Load", "load", pokemon.id));
+
+                var destination = $("<select>")
+                    .addClass("storage-destination")
+                    .attr("aria-label", "Move " + (pokemon.pokemon || "Pokémon") + " to");
+
+                SECTIONS.forEach(function (target) {
+                    if (target !== section) {
+                        $("<option>").val(target).text(SECTION_LABELS[target]).appendTo(destination);
+                    }
+                });
+
+                actions.append(destination);
+                actions.append(makeButton("Move", "move", pokemon.id));
+                if (section !== "trash") {
+                    actions.append(makeButton("Trash", "trash", pokemon.id, "storage-trash-action"));
+                } else {
+                    actions.append(makeButton("Delete", "delete", pokemon.id, "storage-trash-action"));
+                }
+
+                entry.append(actions);
+                container.append(entry);
+            });
+        });
+
+        $("#clearTrash").prop("disabled", storage.trash.length === 0);
+        $("#clearAllBoxes").prop(
+            "disabled",
+            storage.box1.length === 0 && storage.box2.length === 0
+        );
+    }
+
+    function applySavedControls(controls) {
+        if (!Array.isArray(controls)) return;
+        var elements = $("#p1").find("input, select, textarea").not(".set-selector");
+
+        controls.forEach(function (saved) {
+            var element = elements.eq(saved.index);
+            if (!element.length || element.prop("tagName").toLowerCase() !== saved.tag) return;
+
+            if (element.is(":checkbox, :radio")) {
+                element.prop("checked", saved.checked);
+            } else {
+                element.val(saved.value);
+            }
+        });
+    }
+
+    function loadPokemon(savedPokemon) {
+        var option = getSetOptions().filter(function (item) {
+            return item.pokemon === savedPokemon.pokemon &&
+                item.set === savedPokemon.set;
+        })[0];
+
+        if (!option) {
+            alert("The original Pokémon set could not be found.");
+            return;
+        }
+
+        var selector = $("#p1 input.set-selector");
+        selector.select2("data", option);
+        selector.trigger("change");
+        selector.select2("data", option);
+
+        applySavedControls(savedPokemon.controls);
+
+        var pokeObj = $("#p1");
+        pokeObj.find(".move-selector").trigger("change");
+        pokeObj.find(".ability, .item").trigger("change");
+        applySavedControls(savedPokemon.controls);
+
+        if (typeof calcStats === "function") calcStats(pokeObj);
+        if (typeof calcHP === "function") calcHP(pokeObj);
+    }
+
+    $("#saveToTeam").on("click", function () {
+        var selector = $("#p1 input.set-selector");
+        var selected = selector.select2("data");
+        if (Array.isArray(selected)) selected = selected[0];
+
+        if (!selected || !selected.pokemon || !selected.set) {
+            alert("Please select a Pokémon before saving.");
+            return;
+        }
+
+        var existingSection = null;
+        SECTIONS.some(function (section) {
+            var exists = storage[section].some(function (pokemon) {
+                return pokemon.pokemon === selected.pokemon && pokemon.set === selected.set;
+            });
+            if (exists) {
+                existingSection = section;
+                return true;
+            }
+            return false;
+        });
+
+        if (existingSection) {
+            alert("This Pokémon set is already saved in " + SECTION_LABELS[existingSection] +
+                ". Move the existing entry instead of saving a duplicate.");
+            return;
+        }
+
+        if (storage.team.length >= 6) {
+            alert("Your Team is full! Move a Pokémon to Box 1 or Box 2 first.");
+            return;
+        }
+
+        var controls = $("#p1").find("input, select, textarea")
+            .not(".set-selector")
+            .map(function (index) {
+                var control = $(this);
+                var isCheckable = this.type === "checkbox" || this.type === "radio";
+                return {
+                    index: index,
+                    tag: this.tagName.toLowerCase(),
+                    value: control.val(),
+                    checked: isCheckable ? control.prop("checked") : null
+                };
+            }).get();
+
+        storage.team.push({
+            id: "pokemon-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+            pokemon: selected.pokemon,
+            set: selected.set,
+            controls: controls
+        });
+
+        saveStorage();
+        renderStorage();
+    });
+
+    // Clicking Load, Move, Trash, or Delete is handled separately from the card.
+    $(".mon-container").on("click", ".storage-action", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        var id = $(this).attr("data-id");
+        var action = $(this).attr("data-action");
+        var found = findPokemon(id);
+        if (!found) return;
+
+        if (action === "load") {
+            loadPokemon(found.pokemon);
+        } else if (action === "move") {
+            var target = $(this).siblings(".storage-destination").val();
+            movePokemon(id, target);
+        } else if (action === "trash") {
+            movePokemon(id, "trash");
+        } else if (action === "delete") {
+            if (confirm("Permanently delete this Pokémon?")) {
+                storage[found.section].splice(found.index, 1);
+                saveStorage();
+                renderStorage();
+            }
+        }
+    });
+
+    // Compact Box/Trash cards: right-click or Shift+F10 for the existing actions.
+    // The menu is the same action UI already used by Team, not a second storage system.
+    var compactMenu = null;
+    function closeCompactMenu() {
+        if (compactMenu) compactMenu.remove();
+        compactMenu = null;
+    }
+
+    $(document).on("click", function (event) {
+        if (!$(event.target).closest(".storage-compact-menu").length) closeCompactMenu();
+    });
+    $(document).on("keydown", function (event) {
+        if (event.key === "Escape") closeCompactMenu();
+    });
+
+    function openCompactMenu(entry, x, y) {
+        closeCompactMenu();
+        var id = entry.attr("data-id");
+        var found = findPokemon(id);
+        if (!found) return;
+
+        compactMenu = $("<div>").addClass("storage-compact-menu")
+            .attr("role", "menu");
+        $("<div>").addClass("storage-compact-menu-title")
+            .text(found.pokemon.pokemon || "Pokémon").appendTo(compactMenu);
+
+        var actions = $("<div>").addClass("storage-pokemon-actions");
+        actions.append(makeButton("Load", "load", id));
+        var destination = $("<select>").addClass("storage-destination")
+            .attr("aria-label", "Move Pokémon to");
+        SECTIONS.forEach(function (target) {
+            if (target !== found.section) {
+                $("<option>").val(target).text(SECTION_LABELS[target]).appendTo(destination);
+            }
+        });
+        actions.append(destination);
+        actions.append(makeButton("Move", "move", id));
+        if (found.section !== "trash") {
+            actions.append(makeButton("Trash", "trash", id, "storage-trash-action"));
+        } else {
+            actions.append(makeButton("Delete", "delete", id, "storage-trash-action"));
+        }
+        compactMenu.append(actions).appendTo("body");
+        var width = compactMenu.outerWidth();
+        var height = compactMenu.outerHeight();
+        var left = Math.max(4, Math.min(x, $(window).width() - width - 8));
+        var top = Math.max(4, Math.min(y, $(window).height() - height - 8));
+        compactMenu.css({left: left, top: top});
+    }
+
+    $(".mon-container").on("contextmenu", ".storage-compact", function (event) {
+        event.preventDefault();
+        openCompactMenu($(this), event.clientX, event.clientY);
+    });
+    $(".mon-container").on("keydown", ".storage-compact", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            var found = findPokemon($(this).attr("data-id"));
+            if (found) loadPokemon(found.pokemon);
+        } else if ((event.shiftKey && event.key === "F10") || event.key === "ContextMenu") {
+            event.preventDefault();
+            var rect = this.getBoundingClientRect();
+            openCompactMenu($(this), rect.left, rect.bottom);
+        }
+    });
+
+    $(document).on("click", ".storage-compact-menu .storage-action", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        var id = $(this).attr("data-id");
+        var action = $(this).attr("data-action");
+        var found = findPokemon(id);
+        if (!found) { closeCompactMenu(); return; }
+        if (action === "load") loadPokemon(found.pokemon);
+        else if (action === "move") movePokemon(id, $(this).siblings(".storage-destination").val());
+        else if (action === "trash") movePokemon(id, "trash");
+        else if (action === "delete" && confirm("Permanently delete this Pokémon?")) {
+            storage[found.section].splice(found.index, 1);
+            saveStorage();
+            renderStorage();
+        }
+        closeCompactMenu();
+    });
+
+    // Clicking the Pokémon name/card still loads its saved configuration.
+    $(".mon-container").on("click", ".storage-pokemon", function (event) {
+        if ($(event.target).closest(".storage-pokemon-actions").length) return;
+        var found = findPokemon($(this).attr("data-id"));
+        if (found) loadPokemon(found.pokemon);
+    });
+
+    var draggedPokemonId = null;
+
+    $(".mon-container").on("dragstart", ".storage-pokemon", function (event) {
+        draggedPokemonId = $(this).attr("data-id");
+        event.originalEvent.dataTransfer.setData("text/plain", draggedPokemonId);
+        event.originalEvent.dataTransfer.effectAllowed = "move";
+    });
+
+    $(".mon-container").on("dragover", function (event) {
+        event.preventDefault();
+        event.originalEvent.dataTransfer.dropEffect = "move";
+    });
+
+    $(".mon-container").on("drop", function (event) {
+        event.preventDefault();
+        var id = event.originalEvent.dataTransfer.getData("text/plain") || draggedPokemonId;
+        movePokemon(id, this.id);
+        draggedPokemonId = null;
+    });
+
+    $("#clearTrash").on("click", function () {
+        if (!storage.trash.length) return;
+        if (!confirm("Permanently delete all Pokémon in Trash?")) return;
+        storage.trash = [];
+        saveStorage();
+        renderStorage();
+    });
+
+    renderStorage();
+    console.log("Pokémon storage initialized:", storage);
+});

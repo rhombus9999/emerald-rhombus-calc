@@ -1,0 +1,89 @@
+(function () {
+    if (!window.ROM_HACK_STATS || !window.calc || !window.SPECIES_BY_ID) {
+        console.error("ROM importer: required databases unavailable.");
+        return;
+    }
+
+    const gen = calc.Generations.get(8);
+    const normalize = name =>
+        name.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+    const statsFor = stats => ({
+        hp: Number(stats.hp),
+        atk: Number(stats.at),
+        def: Number(stats.df),
+        spa: Number(stats.sa),
+        spd: Number(stats.sd),
+        spe: Number(stats.sp)
+    });
+
+    const lookup = new Map(
+        Object.keys(calc.SPECIES[8]).map(name => [normalize(name), name])
+    );
+
+    let updated = 0;
+    let registered = 0;
+    let skipped = 0;
+
+    for (const [romName, stats] of Object.entries(window.ROM_HACK_STATS)) {
+        const normalized = normalize(romName);
+        let name = lookup.get(normalized);
+        let species;
+
+        if (name) {
+            const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "");
+            species = gen.species.get(id);
+        } else {
+            // Only attempt an exact ID match in the Gen 9 database.
+            const id = romName.toLowerCase().replace(/[^a-z0-9]+/g, "");
+            const source = SPECIES_BY_ID[9][id];
+
+            if (!source) {
+                skipped++;
+                continue;
+            }
+
+            // Make a separate species object for Gen 8.
+            species = Object.assign(
+                Object.create(Object.getPrototypeOf(source)),
+                source,
+                { baseStats: statsFor(stats) }
+            );
+
+            SPECIES_BY_ID[8][id] = species;
+
+            // Register the Pokemon in the calculator's species list.
+            const uiName = Object.keys(calc.SPECIES[9]).find(
+                candidate => normalize(candidate) === normalized
+            );
+
+            if (uiName && !calc.SPECIES[8][uiName]) {
+                calc.SPECIES[8][uiName] = {
+                    ...calc.SPECIES[9][uiName],
+                    bs: { ...stats }
+                };
+            }
+
+            registered++;
+        }
+
+        if (!species) {
+            skipped++;
+            continue;
+        }
+
+        Object.assign(species.baseStats, statsFor(stats));
+
+        if (name) {
+            Object.assign(calc.SPECIES[8][name].bs, stats);
+            updated++;
+        }
+    }
+
+    console.log("ROM hack stats importer finished:", {
+        updatedExisting: updated,
+        registeredMissing: registered,
+        skipped: skipped,
+        total: Object.keys(window.ROM_HACK_STATS).length
+    });
+})();

@@ -1,0 +1,36 @@
+﻿(function () {
+    if (!window.ROM_HACK_STATS || !window.calc) return;
+
+    const gen = calc.Generations.get(8);
+    const normalize = name =>
+        name.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+    const lookup = new Map(
+        Object.keys(calc.SPECIES[8]).map(name => [normalize(name), name])
+    );
+
+    let updated = 0;
+
+    for (const [romName, stats] of Object.entries(window.ROM_HACK_STATS)) {
+        const name = lookup.get(normalize(romName));
+        if (!name) continue;
+
+        const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "");
+        const species = gen.species.get(id);
+        if (!species) continue;
+
+        Object.assign(species.baseStats, {
+            hp: stats.hp,
+            atk: stats.at,
+            def: stats.df,
+            spa: stats.sa,
+            spd: stats.sd,
+            spe: stats.sp
+        });
+
+        Object.assign(calc.SPECIES[8][name].bs, stats);
+        updated++;
+    }
+
+    console.log("ROM hack stats applied:", updated);
+})();

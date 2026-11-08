@@ -1,0 +1,129 @@
+﻿$(function () {
+    var trainers = [
+    "May - route 103",
+    "Grunt - Petalburg woods",
+    "Red - route 116",
+    "Roxanne",
+    "Grunt - Rusturf Tunnel ",
+    "Brawly",
+    "MEL & PAUL",
+    "Grunt - Museum 1",
+    "Grunt - Museum 2",
+    "May - route 110",
+    "Noland - route 110",
+    "BRANDI & AISHA",
+    "MELINA",
+    "Wally - Mauville",
+    "Wattson",
+    "Tucker & Greta",
+    "Sophie",
+    "Red - Route 114",
+    "TABITHA - Mt. Chimney",
+    "MAXIE - Mt. Chimney",
+    "FLANNERY"
+];
+    var trainerIndex = 0;
+
+    function renderOpposingTeam() {
+        var trainerName = trainers[trainerIndex];
+        var customSets = {};
+
+        try {
+            customSets = JSON.parse(localStorage.customsets || "{}");
+        } catch (e) {
+            console.error("Could not read imported custom sets.", e);
+            return;
+        }
+
+        var team = [];
+
+        Object.keys(customSets).forEach(function (pokemon) {
+            if (!customSets[pokemon]) return;
+
+            Object.keys(customSets[pokemon]).forEach(function (setName) {
+                if (setName === trainerName ||
+                    (trainerName === "MELINA" && setName.indexOf("MELINA ") === 0)) {
+                    team.push({
+                        pokemon: pokemon,
+                        setName: setName
+                    });
+                }
+            });
+        });
+
+        $("#opposingTrainerName").text(trainerName);
+        $("#previousTrainer").prop("disabled", trainerIndex === 0);
+        $("#nextTrainer").prop("disabled", trainerIndex === trainers.length - 1);
+        $("#opposingTeamPokemon").empty();
+
+        team.forEach(function (entry) {
+            var pokemon = entry.pokemon;
+            var setName = entry.setName;
+            var set = customSets[pokemon][setName];
+            var card = $("<button>", {
+                type: "button",
+                class: "team-pokemon"
+            });
+
+            var sprite = $("<img>", {
+                src: "https://play.pokemonshowdown.com/sprites/gen5/" + pokemon.toLowerCase().replace("tauros-paldea-combat", "tauros-paldeacombat").replace("tauros-paldea-blaze", "tauros-paldeablaze").replace("zygarde-10%", "zygarde-10").replace("oricorio-pom-pom", "oricorio-pompom") + ".png",
+                alt: pokemon,
+                class: "team-pokemon-sprite"
+            });
+
+            var label = $("<div>", {
+                class: "team-pokemon-label",
+                text: pokemon + " Lv. " + (set.level || 100)
+            });
+
+            card.append(sprite, label);
+
+            card.on("click", function () {
+                var selector = $("#p2 input.set-selector");
+                var option = getSetOptions().filter(function (x) { return x.pokemon === pokemon && x.set === setName; })[0];
+                if (!option) return;
+                selector.select2("data", option);
+                selector.trigger("change");
+                selector.select2("data", option);
+
+                $("#opposingTeamPokemon .team-pokemon").removeClass("selected");
+                card.addClass("selected");
+            });
+
+            $("#opposingTeamPokemon").append(card);
+        });
+    }
+
+    $("#previousTrainer").on("click", function () {
+        if (trainerIndex > 0) {
+            trainerIndex--;
+            renderOpposingTeam();
+        }
+    });
+
+    $("#nextTrainer").on("click", function () {
+        if (trainerIndex < trainers.length - 1) {
+            trainerIndex++;
+            renderOpposingTeam();
+        }
+    });
+
+    renderOpposingTeam();
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
