@@ -899,3 +899,17 @@ table.field {
     box-sizing: border-box;
 }
 
+
+/* Team and Box Pokemon sprite sizing */
+#team .storage-pokemon-sprite,
+#box1 .storage-pokemon-sprite,
+#box2 .storage-pokemon-sprite,
+#trash .storage-pokemon-sprite {
+    display: block;
+    width: 46px;
+    height: 46px;
+    max-width: 100%;
+    object-fit: contain;
+    margin: 0;
+    flex: 0 0 auto;
+}

@@ -1,4 +1,4 @@
-$(function () {
+﻿$(function () {
     var STORAGE_KEY = "pokemonStorage";
     var SECTIONS = ["team", "box1", "box2", "trash"];
     var SECTION_LABELS = {
@@ -83,9 +83,22 @@ $(function () {
 
     function pokemonSpriteURL(name) {
         if (!name) return "";
+
+        // Regional forms use Pokemon Database sprites.
+        var regionalName = String(name)
+            .toLowerCase()
+            .replace(/-alola$/, "-alolan")
+            .replace(/-galar$/, "-galarian")
+            .replace(/-hisui$/, "-hisuian")
+            .replace(/-paldea$/, "-paldean");
+
+        if (regionalName !== String(name).toLowerCase()) {
+            return "https://img.pokemondb.net/sprites/home/normal/" +
+                regionalName + ".png";
+        }
         // Pokémon Showdown uses lower-case names with punctuation removed.
         var slug = String(name).toLowerCase()
-            .replace(/♀/g, "f").replace(/♂/g, "m")
+            .replace(/\u2640/g, "f").replace(/\u2642/g, "m")
             .replace(/[^a-z0-9]/g, "");
         return slug ? "https://play.pokemonshowdown.com/sprites/dex/" + slug + ".png" : "";
     }
@@ -122,7 +135,7 @@ $(function () {
                             if (!img.data("fallback-attempted")) {
                                 img.data("fallback-attempted", true);
                                 var slug = String(pokemon.pokemon || "").toLowerCase()
-                                    .replace(/♀/g, "-f").replace(/♂/g, "-m")
+                                    .replace(/\u2640/g, "-f").replace(/\u2642/g, "-m")
                                     .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
                                 if (slug) {
                                     img.attr("src", "https://img.pokemondb.net/sprites/home/normal/" + slug + ".png");
@@ -152,7 +165,7 @@ $(function () {
                         .attr("aria-label", (pokemon.pokemon || "Pokémon") +
                             ": click to load; right-click or press Shift+F10 for actions")
                         .attr("title", (pokemon.pokemon || "Pokémon") +
-                            " — click to load, right-click for actions");
+                            " - click to load, right-click for actions");
                 }
 
                 var actions = $("<div>").addClass("storage-pokemon-actions");
@@ -518,3 +531,4 @@ $(function () {
     renderStorage();
     console.log("Pokémon storage initialized:", storage);
 });
+
