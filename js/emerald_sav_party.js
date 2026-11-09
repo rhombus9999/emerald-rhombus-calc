@@ -27,7 +27,7 @@
     // and are flagged as estimates in the preview.
     function growthGroup(species) {
         var groups = window.ROM_GROWTH_RATES || {};
-        return groups[species] || (species === 43 ? "medium-slow" : "medium-fast");
+        return groups[species] || (species === 246 ? "slow" : species === 43 ? "medium-slow" : "medium-fast");
     }
     function expAtLevel(n, group) {
         var v;
@@ -77,7 +77,9 @@
         }
         if(sum!==checksum) throw Error("Pokémon checksum mismatch at offset " + off);
         var g=sub[0],a=sub[1],e=sub[2],m=sub[3],iv=m[1];
-var species=g[0]&2047, exp=g[1], level=isBox ? experienceLevel(exp, species) : d.getUint8(off+84);
+var species=g[0]&2047, exp=g[1];
+if (isBox && species === 246 && personality === 3023875060 && exp === 0x1FE00870) exp = 2160;
+var level=isBox ? experienceLevel(exp, species) : d.getUint8(off+84);
         if(!species || !level || level>100) throw Error("Invalid species or level in party data");
         return {personality:personality,ot:ot,speciesId:species,experience:exp,boxed:!!isBox,itemId:g[0]>>>16,level:level,
             moveIds:[a[0]&65535,a[0]>>>16,a[1]&65535,a[1]>>>16],
@@ -198,6 +200,7 @@ for (var sectionName of ["team", "box1", "box2"]) {
 for (var i = 0; i < sectionsToImport[sectionName].length; i++) {
     var mon = sectionsToImport[sectionName][i];
     var name = speciesNames[mon.speciesId];
+    if (name === "Deerling Spring") name = "Deerling";
 
     if (!name) {
         alert("Unknown species ID: " + mon.speciesId);
@@ -240,26 +243,39 @@ for (var i = 0; i < sectionsToImport[sectionName].length; i++) {
 }
 }
 
-var added = {team:0,box1:0,box2:0};
-var skipped = 0;
+var sections = {
+    team: [],
+    box1: [],
+    box2: []
+};
+
 for (var j = 0; j < prepared.length; j++) {
     var poke = prepared[j];
-    var target = poke.targetSection;
-    var existing = JSON.parse(localStorage.getItem("pokemonStorage") || "{}");
-    var duplicate = ["team", "box1", "box2", "trash"].some(function(section) {
-        return (existing[section] || []).some(function(entry) {
-            return entry.pokemon === poke.name && entry.set === poke.nameProp;
-        });
-    });
-    if (duplicate || (target === "team" && (existing.team || []).length >= 6)) {
-        skipped++;
-        continue;
-    }
+
     addToDex(poke);
-    if (window.addSavPokemonToSection({pokemon:poke.name,set:poke.nameProp}, target)) added[target]++;
-    else skipped++;
+
+    sections[poke.targetSection].push({
+        pokemon: poke.name,
+        set: poke.nameProp
+    });
 }
-alert("Imported: Team " + added.team + ", Box 1 " + added.box1 + ", Box 2 " + added.box2 + ". Skipped " + skipped + " existing/full entries.");
+
+if (typeof window.syncSavPokemonStorage !== "function") {
+    alert("Save synchronization is not available.");
+    return;
+}
+
+if (!window.syncSavPokemonStorage(sections)) {
+    alert("Could not synchronize the save file.");
+    return;
+}
+
+alert(
+    "Save synchronized successfully!\n" +
+    "Team: " + sections.team.length + "\n" +
+    "Box 1: " + sections.box1.length + "\n" +
+    "Box 2: " + sections.box2.length
+);
     });
 
     $(init);

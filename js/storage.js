@@ -307,6 +307,56 @@ $(function () {
         renderStorage();
         return true;
     };
+        window.syncSavPokemonStorage = function (sections) {
+        if (!sections || !Array.isArray(sections.team) ||
+            !Array.isArray(sections.box1) ||
+            !Array.isArray(sections.box2)) {
+            return false;
+        }
+
+        if (sections.team.length > 6) return false;
+
+        var seen = {};
+        var next = {
+            team: [],
+            box1: [],
+            box2: []
+        };
+
+        ["team", "box1", "box2"].forEach(function (section) {
+            sections[section].forEach(function (pokemon) {
+                if (!pokemon || !pokemon.pokemon || !pokemon.set) return;
+
+                var key = pokemon.set.indexOf("Save-") === 0
+                    ? pokemon.set
+                    : pokemon.pokemon + "|" + pokemon.set;
+
+                if (seen[key]) return;
+                seen[key] = true;
+
+                next[section].push({
+                    id: "sav-" + key,
+                    pokemon: pokemon.pokemon,
+                    set: pokemon.set,
+                    controls: []
+                });
+            });
+        });
+
+        storage.team = next.team;
+        storage.box1 = next.box1;
+        storage.box2 = next.box2;
+
+        storage.trash = storage.trash.filter(function (pokemon) {
+            return !seen[pokemon.set.indexOf("Save-") === 0
+                ? pokemon.set
+                : pokemon.pokemon + "|" + pokemon.set];
+        });
+
+        saveStorage();
+        renderStorage();
+        return true;
+    };
     window.addSavPokemonToTeam = function (pokemon) {
         return window.addSavPokemonToSection(pokemon, "team");
     };
@@ -454,7 +504,17 @@ $(function () {
         saveStorage();
         renderStorage();
     });
+        $("#clearAllBoxes").on("click", function () {
+        if (!storage.box1.length && !storage.box2.length) return;
 
+        if (!confirm("Permanently delete all Pokémon in Box 1 and Box 2?")) return;
+
+        storage.box1 = [];
+        storage.box2 = [];
+
+        saveStorage();
+        renderStorage();
+    });
     renderStorage();
     console.log("Pokémon storage initialized:", storage);
 });
